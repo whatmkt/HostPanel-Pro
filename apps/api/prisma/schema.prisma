@@ -1,0 +1,983 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// Core: Users, Roles, Permissions
+// =============================================================================
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  username        String    @unique
+  hashedPassword  String    @map("hashed_password")
+  firstName       String?   @map("first_name")
+  lastName        String?   @map("last_name")
+  avatarUrl       String?   @map("avatar_url")
+  phone           String?
+  roleId          String    @map("role_id") @db.Uuid
+  clientId        String?   @map("client_id") @db.Uuid
+  isActive        Boolean   @default(true) @map("is_active")
+  isVerified      Boolean   @default(false) @map("is_verified")
+  totpEnabled     Boolean   @default(false) @map("totp_enabled")
+  totpSecret      String?   @map("totp_secret")
+  failedLogins    Int       @default(0) @map("failed_logins")
+  lockedUntil     DateTime? @map("locked_until")
+  lastLoginAt     DateTime? @map("last_login_at")
+  lastLoginIp     String?   @map("last_login_ip")
+  passwordChangedAt DateTime? @map("password_changed_at")
+  settings        Json?     @default("{}")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  role           Role            @relation(fields: [roleId], references: [id])
+  client         Client?         @relation(fields: [clientId], references: [id])
+  sessions       UserSession[]
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+  apiTokens      ApiToken[]
+  cronJobs       CronJob[]
+  backupJobs     BackupJob[]
+  gitDeployments GitDeployment[]
+
+  @@map("users")
+}
+
+model UserSession {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  token        String    @unique
+  refreshToken String?   @map("refresh_token")
+  ipAddress    String    @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  group       String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// =============================================================================
+// Clients & Business
+// =============================================================================
+
+model Client {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String   @unique
+  companyName   String?  @map("company_name")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  phone         String?
+  address       String?
+  city          String?
+  country       String?
+  taxId         String?  @map("tax_id")
+  notes         String?
+  isActive      Boolean  @default(true) @map("is_active")
+  createdBy     String?  @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  users         User[]
+  subscriptions Subscription[]
+  domains       Domain[]
+
+  @@map("clients")
+}
+
+model HostingPlan {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @unique
+  slug          String   @unique
+  description   String?
+  price         Decimal  @default(0)
+  currency      String   @default("EUR")
+  billingPeriod String   @default("monthly") @map("billing_period")
+  diskLimitMb   Int      @default(1024) @map("disk_limit_mb")
+  bandwidthMb   Int      @default(10240) @map("bandwidth_mb")
+  domainLimit   Int      @default(1) @map("domain_limit")
+  subdomainLimit Int     @default(0) @map("subdomain_limit")
+  dbLimit       Int      @default(1) @map("db_limit")
+  mailboxLimit  Int      @default(0) @map("mailbox_limit")
+  ftpLimit      Int      @default(1) @map("ftp_limit")
+  features      Json     @default("[]")
+  isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("hosting_plans")
+}
+
+model Subscription {
+  id           String    @id @default(uuid()) @db.Uuid
+  clientId     String    @map("client_id") @db.Uuid
+  planId       String    @map("plan_id") @db.Uuid
+  status       String    @default("active")
+  startsAt     DateTime  @map("starts_at")
+  endsAt       DateTime? @map("ends_at")
+  autoRenew    Boolean   @default(true) @map("auto_renew")
+  notes        String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  client Client      @relation(fields: [clientId], references: [id])
+  plan   HostingPlan @relation(fields: [planId], references: [id])
+  domains Domain[]
+
+  @@index([clientId])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+// =============================================================================
+// Domains & Websites
+// =============================================================================
+
+model Domain {
+  id              String   @id @default(uuid()) @db.Uuid
+  domainName      String   @unique @map("domain_name")
+  clientId        String?  @map("client_id") @db.Uuid
+  subscriptionId  String?  @map("subscription_id") @db.Uuid
+  documentRoot    String   @default("/var/www/html") @map("document_root")
+  phpVersion      String   @default("8.3") @map("php_version")
+  webServer       String   @default("nginx") @map("web_server")
+  ipAddress       String?  @map("ip_address")
+  redirectHttps   Boolean  @default(true) @map("redirect_https")
+  forceWww        Boolean  @default(false) @map("force_www")
+  status          String   @default("active")
+  suspendedReason String?  @map("suspended_reason")
+  diskUsageMb     Int      @default(0) @map("disk_usage_mb")
+  bandwidthMb     Int      @default(0) @map("bandwidth_mb")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  client             Client?              @relation(fields: [clientId], references: [id])
+  subscription       Subscription?        @relation(fields: [subscriptionId], references: [id])
+  subdomains         Subdomain[]
+  aliases            DomainAlias[]
+  websites           Website[]
+  sslCertificates    SslCertificate[]
+  dnsZones           DnsZone[]
+  mailDomains        MailDomain[]
+  databases          Database[]
+  databaseDomains    DatabaseDomain[]
+  ftpAccounts        FtpAccount[]
+  backupJobs         BackupJob[]
+  cronJobs           CronJob[]
+  gitDeployments     GitDeployment[]
+  cacheRules         CacheRule[]
+  webOptimizations   WebOptimizationSetting[]
+  wordpressInstalls  WordPressInstallation[]
+
+  @@index([clientId])
+  @@index([status])
+  @@map("domains")
+}
+
+model Subdomain {
+  id           String @id @default(uuid()) @db.Uuid
+  domainId     String @map("domain_id") @db.Uuid
+  name         String
+  documentRoot String @map("document_root")
+  status       String @default("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, name])
+  @@map("subdomains")
+}
+
+model DomainAlias {
+  id        String   @id @default(uuid()) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  aliasName String   @map("alias_name")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, aliasName])
+  @@map("domain_aliases")
+}
+
+model Website {
+  id          String   @id @default(uuid()) @db.Uuid
+  domainId    String   @map("domain_id") @db.Uuid
+  type        String   @default("generic")
+  title       String?
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  domain           Domain                   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  wordpressInstall WordPressInstallation?
+
+  @@map("websites")
+}
+
+// =============================================================================
+// SSL
+// =============================================================================
+
+model SslCertificate {
+  id            String    @id @default(uuid()) @db.Uuid
+  domainId      String    @map("domain_id") @db.Uuid
+  type          String    @default("letsencrypt")
+  status        String    @default("pending")
+  issuer        String?
+  validFrom     DateTime? @map("valid_from")
+  validTo       DateTime? @map("valid_to")
+  autoRenew     Boolean   @default(true) @map("auto_renew")
+  challengeType String    @default("http") @map("challenge_type")
+  errorMessage  String?   @map("error_message")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@index([domainId])
+  @@map("ssl_certificates")
+}
+
+// =============================================================================
+// DNS
+// =============================================================================
+
+model DnsZone {
+  id        String   @id @default(uuid()) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  name      String
+  type      String   @default("master")
+  soa       Json     @default("{}")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  domain  Domain      @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  records DnsRecord[]
+
+  @@map("dns_zones")
+}
+
+model DnsRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  zoneId   String @map("zone_id") @db.Uuid
+  name     String
+  type     String
+  content  String
+  ttl      Int    @default(3600)
+  priority Int    @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  zone DnsZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([zoneId])
+  @@map("dns_records")
+}
+
+// =============================================================================
+// Mail
+// =============================================================================
+
+model MailDomain {
+  id         String    @id @default(uuid()) @db.Uuid
+  domainId   String    @map("domain_id") @db.Uuid
+  dkimKey    String?   @map("dkim_key")
+  spfRecord  String?   @map("spf_record")
+  dmarcRecord String?  @map("dmarc_record")
+  catchAll   String?   @map("catch_all")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  domain     Domain      @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  mailboxes  Mailbox[]
+  aliases    MailAlias[]
+  forwarders MailForwarder[]
+
+  @@map("mail_domains")
+}
+
+model Mailbox {
+  id           String    @id @default(uuid()) @db.Uuid
+  mailDomainId String    @map("mail_domain_id") @db.Uuid
+  email        String
+  hashedPassword String  @map("hashed_password")
+  quotaMb      Int       @default(100) @map("quota_mb")
+  usedMb       Int       @default(0) @map("used_mb")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  mailDomain MailDomain @relation(fields: [mailDomainId], references: [id], onDelete: Cascade)
+
+  @@unique([mailDomainId, email])
+  @@map("mailboxes")
+}
+
+model MailAlias {
+  id           String   @id @default(uuid()) @db.Uuid
+  mailDomainId String   @map("mail_domain_id") @db.Uuid
+  source       String
+  destination  String
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  mailDomain MailDomain @relation(fields: [mailDomainId], references: [id], onDelete: Cascade)
+
+  @@map("mail_aliases")
+}
+
+model MailForwarder {
+  id           String   @id @default(uuid()) @db.Uuid
+  mailDomainId String   @map("mail_domain_id") @db.Uuid
+  source       String
+  destination  String
+  keepCopy     Boolean  @default(false) @map("keep_copy")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  mailDomain MailDomain @relation(fields: [mailDomainId], references: [id], onDelete: Cascade)
+
+  @@map("mail_forwarders")
+}
+
+// =============================================================================
+// Databases
+// =============================================================================
+
+model Database {
+  id        String   @id @default(uuid()) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  name      String
+  type      String   @default("mysql")
+  charset   String   @default("utf8mb4")
+  sizeMb    Int      @default(0) @map("size_mb")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  domain  Domain          @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  users   DatabaseUser[]
+  domains DatabaseDomain[]
+
+  @@unique([type, name])
+  @@map("databases")
+}
+
+model DatabaseUser {
+  id           String   @id @default(uuid()) @db.Uuid
+  databaseId   String   @map("database_id") @db.Uuid
+  username     String
+  hashedPassword String @map("hashed_password")
+  host         String   @default("localhost")
+  privileges   Json     @default("[]")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  database Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+
+  @@unique([host, username])
+  @@map("database_users")
+}
+
+model DatabaseDomain {
+  databaseId String @map("database_id") @db.Uuid
+  domainId   String @map("domain_id") @db.Uuid
+
+  database Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  domain   Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@id([databaseId, domainId])
+  @@map("database_domains")
+}
+
+// =============================================================================
+// FTP
+// =============================================================================
+
+model FtpAccount {
+  id             String    @id @default(uuid()) @db.Uuid
+  domainId       String    @map("domain_id") @db.Uuid
+  username       String    @unique
+  hashedPassword String    @map("hashed_password")
+  homeDirectory  String    @map("home_directory")
+  protocol       String    @default("sftp")
+  isActive       Boolean   @default(true) @map("is_active")
+  lastAccessAt   DateTime? @map("last_access_at")
+  lastAccessIp   String?   @map("last_access_ip")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@map("ftp_accounts")
+}
+
+// =============================================================================
+// Backups
+// =============================================================================
+
+model BackupJob {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String?   @map("user_id") @db.Uuid
+  domainId         String?   @map("domain_id") @db.Uuid
+  name             String
+  type             String    @default("full")
+  scope            String    @default("domain")
+  scopeId          String?   @map("scope_id") @db.Uuid
+  destination      String    @default("local")
+  destinationConfig Json?    @map("destination_config")
+  schedule         String?
+  retentionDays    Int       @default(30) @map("retention_days")
+  encrypt          Boolean   @default(false)
+  compress         Boolean   @default(true)
+  verifyIntegrity  Boolean   @default(true) @map("verify_integrity")
+  includeFiles     Boolean   @default(true) @map("include_files")
+  includeDatabases Boolean   @default(true) @map("include_databases")
+  includeMail      Boolean   @default(false) @map("include_mail")
+  includeDns       Boolean   @default(false) @map("include_dns")
+  lastRunAt        DateTime? @map("last_run_at")
+  lastRunStatus    String?   @map("last_run_status")
+  nextRunAt        DateTime? @map("next_run_at")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user      User?             @relation(fields: [userId], references: [id])
+  domain    Domain?           @relation(fields: [domainId], references: [id])
+  snapshots BackupSnapshot[]
+
+  @@map("backup_jobs")
+}
+
+model BackupSnapshot {
+  id            String    @id @default(uuid()) @db.Uuid
+  backupJobId   String    @map("backup_job_id") @db.Uuid
+  type          String
+  status        String    @default("in_progress")
+  sizeMb        Int       @default(0) @map("size_mb")
+  filePath      String    @map("file_path")
+  checksum      String
+  encrypted     Boolean   @default(false)
+  compressed    Boolean   @default(true)
+  startedAt     DateTime  @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+  error         String?
+  retentionUntil DateTime? @map("retention_until")
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  job BackupJob @relation(fields: [backupJobId], references: [id], onDelete: Cascade)
+
+  @@index([backupJobId])
+  @@index([status])
+  @@map("backup_snapshots")
+}
+
+// =============================================================================
+// Security: Firewall, Fail2Ban, Malware
+// =============================================================================
+
+model FirewallRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  type        String
+  protocol    String   @default("tcp")
+  port        Int?
+  portRange   String?  @map("port_range")
+  source      String?
+  destination String?
+  comment     String?
+  isActive    Boolean  @default(true) @map("is_active")
+  order       Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("firewall_rules")
+}
+
+model Fail2BanJail {
+  id         String    @id @default(uuid()) @db.Uuid
+  service    String
+  jailName   String    @map("jail_name")
+  enabled    Boolean   @default(true)
+  maxRetry   Int       @default(3) @map("max_retry")
+  findTime   Int       @default(600) @map("find_time")
+  banTime    Int       @default(3600) @map("ban_time")
+  port       String?
+  filter     String?
+  logPath    String?   @map("log_path")
+  banCount   Int       @default(0) @map("ban_count")
+  lastBanAt  DateTime? @map("last_ban_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  bans Fail2BanBan[]
+
+  @@map("fail2ban_jails")
+}
+
+model Fail2BanBan {
+  id        String   @id @default(uuid()) @db.Uuid
+  jailId    String   @map("jail_id") @db.Uuid
+  ip        String
+  bannedAt  DateTime @map("banned_at")
+  unbanAt   DateTime @map("unban_at")
+  attempts  Int      @default(1)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  jail Fail2BanJail @relation(fields: [jailId], references: [id], onDelete: Cascade)
+
+  @@map("fail2ban_bans")
+}
+
+model MalwareScan {
+  id           String    @id @default(uuid()) @db.Uuid
+  type         String
+  targetId     String?   @map("target_id") @db.Uuid
+  status       String    @default("pending")
+  filesScanned Int       @default(0) @map("files_scanned")
+  threatsFound Int       @default(0) @map("threats_found")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  error        String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  findings MalwareFinding[]
+
+  @@map("malware_scans")
+}
+
+model MalwareFinding {
+  id            String    @id @default(uuid()) @db.Uuid
+  scanId        String    @map("scan_id") @db.Uuid
+  filePath      String    @map("file_path")
+  threatName    String    @map("threat_name")
+  status        String    @default("pending_review")
+  quarantinedAt DateTime? @map("quarantined_at")
+  resolvedAt    DateTime? @map("resolved_at")
+  falsePositive Boolean   @default(false) @map("false_positive")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  scan MalwareScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@index([scanId])
+  @@map("malware_findings")
+}
+
+// =============================================================================
+// Performance & Cache
+// =============================================================================
+
+model PerformanceProfile {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  mode         String    @default("safe")
+  serverId     String?   @map("server_id") @db.Uuid
+  isActive     Boolean   @default(true) @map("is_active")
+  isGlobal     Boolean   @default(false) @map("is_global")
+  settings     Json
+  lastAppliedAt DateTime? @map("last_applied_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("performance_profiles")
+}
+
+model CacheRule {
+  id        String   @id @default(uuid()) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  pattern   String
+  type      String
+  value     String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@map("cache_rules")
+}
+
+model WebOptimizationSetting {
+  id          String   @id @default(uuid()) @db.Uuid
+  domainId    String   @map("domain_id") @db.Uuid
+  option      String
+  value       String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, option])
+  @@map("web_optimization_settings")
+}
+
+// =============================================================================
+// Server & Infrastructure
+// =============================================================================
+
+model Server {
+  id            String    @id @default(uuid()) @db.Uuid
+  hostname      String
+  ipAddress     String    @map("ip_address")
+  osName        String    @map("os_name")
+  osVersion     String    @map("os_version")
+  kernel        String
+  architecture  String    @default("x86_64")
+  cpuCores      Int       @default(1) @map("cpu_cores")
+  ramTotalMb    Int       @default(1024) @map("ram_total_mb")
+  diskTotalMb   Int       @default(10240) @map("disk_total_mb")
+  panelVersion  String    @default("1.0.0") @map("panel_version")
+  agentVersion  String    @default("1.0.0") @map("agent_version")
+  status        String    @default("online")
+  lastHeartbeat DateTime? @map("last_heartbeat")
+  location      String?
+  dataCenter    String?   @map("data_center")
+  tags          Json      @default("[]")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  services     ServerService[]
+  systemMetrics SystemMetric[]
+  serviceStatuses ServiceStatus[]
+
+  @@map("servers")
+}
+
+model ServerService {
+  id            String    @id @default(uuid()) @db.Uuid
+  serverId      String    @map("server_id") @db.Uuid
+  serviceName   String    @map("service_name")
+  displayName   String    @map("display_name")
+  status        String    @default("not_installed")
+  autoStart     Boolean   @default(true) @map("auto_start")
+  port          Int?
+  version       String?
+  configPath    String?   @map("config_path")
+  lastRestartAt DateTime? @map("last_restart_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@map("server_services")
+}
+
+model CronJob {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String?   @map("user_id") @db.Uuid
+  domainId        String?   @map("domain_id") @db.Uuid
+  name            String
+  expression      String
+  command         String
+  type            String    @default("shell_command")
+  isActive        Boolean   @default(true) @map("is_active")
+  lastRunAt       DateTime? @map("last_run_at")
+  lastExitCode    Int?      @map("last_exit_code")
+  lastOutput      String?   @map("last_output")
+  lastError       String?   @map("last_error")
+  nextRunAt       DateTime? @map("next_run_at")
+  timeoutSeconds  Int       @default(300) @map("timeout_seconds")
+  retryOnFailure  Boolean   @default(false) @map("retry_on_failure")
+  maxRetries      Int       @default(0) @map("max_retries")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user   User?   @relation(fields: [userId], references: [id])
+  domain Domain? @relation(fields: [domainId], references: [id])
+
+  @@map("cron_jobs")
+}
+
+model GitDeployment {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String?   @map("user_id") @db.Uuid
+  domainId             String    @map("domain_id") @db.Uuid
+  repositoryUrl        String    @map("repository_url")
+  branch               String    @default("main")
+  deployPath           String    @map("deploy_path")
+  webhookSecret        String?   @map("webhook_secret")
+  postDeployCommands   Json      @default("[]") @map("post_deploy_commands")
+  environmentVariables Json      @default("{}") @map("environment_variables")
+  status               String    @default("idle")
+  lastDeployAt         DateTime? @map("last_deploy_at")
+  lastDeployCommit     String?   @map("last_deploy_commit")
+  lastDeployStatus     String?   @map("last_deploy_status")
+  autoDeploy           Boolean   @default(false) @map("auto_deploy")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  user   User?  @relation(fields: [userId], references: [id])
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@map("git_deployments")
+}
+
+model DockerContainer {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @unique
+  image        String
+  containerId  String?  @map("container_id")
+  status       String   @default("stopped")
+  ports        Json     @default("[]")
+  volumes      Json     @default("[]")
+  environment  Json     @default("{}")
+  restartPolicy String  @default("no") @map("restart_policy")
+  memoryLimitMb Int?    @map("memory_limit_mb")
+  cpuLimit     Int?
+  createdFromTemplate String? @map("created_from_template")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("docker_containers")
+}
+
+model WordPressInstallation {
+  id                String   @id @default(uuid()) @db.Uuid
+  domainId          String   @unique @map("domain_id") @db.Uuid
+  websiteId         String?  @unique @map("website_id") @db.Uuid
+  siteUrl           String   @map("site_url")
+  version           String
+  language          String   @default("es_ES")
+  adminUser         String   @map("admin_user")
+  dbName            String   @map("db_name")
+  dbUser            String   @map("db_user")
+  tablePrefix       String   @default("wp_") @map("table_prefix")
+  autoUpdateCore    Boolean  @default(false) @map("auto_update_core")
+  autoUpdatePlugins Boolean  @default(false) @map("auto_update_plugins")
+  autoUpdateThemes  Boolean  @default(false) @map("auto_update_themes")
+  maintenanceMode   Boolean  @default(false) @map("maintenance_mode")
+  hardeningApplied  Boolean  @default(false) @map("hardening_applied")
+  xmlrpcDisabled    Boolean  @default(true) @map("xmlrpc_disabled")
+  wpLoginProtected  Boolean  @default(false) @map("wp_login_protected")
+  redisCacheEnabled Boolean  @default(false) @map("redis_cache_enabled")
+  nginxCacheEnabled Boolean  @default(false) @map("nginx_cache_enabled")
+  installedPlugins  Json     @default("[]") @map("installed_plugins")
+  installedThemes   Json     @default("[]") @map("installed_themes")
+  lastScanAt        DateTime? @map("last_scan_at")
+  malwareDetected   Int      @default(0) @map("malware_detected")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  domain  Domain  @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  website Website? @relation(fields: [websiteId], references: [id])
+
+  @@map("wordpress_installations")
+}
+
+// =============================================================================
+// Monitoring
+// =============================================================================
+
+model SystemMetric {
+  id            String   @id @default(uuid()) @db.Uuid
+  serverId      String   @map("server_id") @db.Uuid
+  timestamp     DateTime @default(now())
+  cpuPercent    Float    @map("cpu_percent")
+  ramPercent    Float    @map("ram_percent")
+  ramUsedMb     Int      @map("ram_used_mb")
+  ramTotalMb    Int      @map("ram_total_mb")
+  diskPercent   Float    @map("disk_percent")
+  diskUsedMb    Int      @map("disk_used_mb")
+  diskTotalMb   Int      @map("disk_total_mb")
+  loadAvg1      Float    @map("load_avg_1")
+  loadAvg5      Float    @map("load_avg_5")
+  loadAvg15     Float    @map("load_avg_15")
+  networkRxBytes BigInt  @default(0) @map("network_rx_bytes")
+  networkTxBytes BigInt  @default(0) @map("network_tx_bytes")
+  uptimeSeconds Int      @map("uptime_seconds")
+  processCount  Int      @default(0) @map("process_count")
+  swapUsedMb    Int      @default(0) @map("swap_used_mb")
+  swapTotalMb   Int      @default(0) @map("swap_total_mb")
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, timestamp])
+  @@map("system_metrics")
+}
+
+model ServiceStatus {
+  id            String   @id @default(uuid()) @db.Uuid
+  serverId      String   @map("server_id") @db.Uuid
+  serviceName   String   @map("service_name")
+  status        String
+  memoryMb      Int      @default(0) @map("memory_mb")
+  cpuPercent    Float    @default(0) @map("cpu_percent")
+  pid           Int?
+  lastChecked   DateTime @default(now()) @map("last_checked")
+  uptimeSeconds Int      @default(0) @map("uptime_seconds")
+
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@index([serverId])
+  @@map("service_statuses")
+}
+
+// =============================================================================
+// Audit & Notifications
+// =============================================================================
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  username     String?
+  userEmail    String?  @map("user_email")
+  ipAddress    String   @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  action       String
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id") @db.Uuid
+  resourceName String?  @map("resource_name")
+  result       String   @default("success")
+  details      Json?
+  beforeChange Json?    @map("before_change")
+  afterChange  Json?    @map("after_change")
+  timestamp    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  clientId  String?  @map("client_id") @db.Uuid
+  type      String
+  severity  String   @default("info")
+  title     String
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  readAt    DateTime? @map("read_at")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@map("notifications")
+}
+
+// =============================================================================
+// Extensions & Settings
+// =============================================================================
+
+model Extension {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @unique
+  slug         String   @unique
+  version      String
+  description  String
+  author       String
+  homepage     String?
+  enabled      Boolean  @default(true)
+  configSchema Json?    @map("config_schema")
+  configValues Json?    @map("config_values")
+  permissions  Json     @default("[]")
+  menuItems    Json     @default("[]") @map("menu_items")
+  widgets      Json     @default("[]")
+  hooks        Json     @default("[]")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("extensions")
+}
+
+model Setting {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  value       String
+  type        String   @default("string")
+  group       String   @default("general")
+  label       String
+  description String?
+  editable    Boolean  @default(true)
+  hidden      Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model ApiToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  name       String
+  token      String    @unique
+  lastUsedAt DateTime? @map("last_used_at")
+  expiresAt  DateTime? @map("expires_at")
+  permissions Json     @default("[]")
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_tokens")
+}

@@ -1,0 +1,33 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy root workspace configs
+COPY package.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+
+# Copy package-level package.json files for install
+COPY packages/config/package.json ./packages/config/
+COPY packages/types/package.json ./packages/types/
+COPY packages/validation/package.json ./packages/validation/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY apps/web/package.json ./apps/web/
+
+RUN npm install --legacy-peer-deps
+
+# Copy actual source code
+COPY packages/config ./packages/config
+COPY packages/types ./packages/types
+COPY packages/validation ./packages/validation
+COPY packages/sdk ./packages/sdk
+COPY apps/web ./apps/web
+
+WORKDIR /app/apps/web
+
+EXPOSE 3000
+
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=development
+
+CMD ["npm", "run", "dev"]

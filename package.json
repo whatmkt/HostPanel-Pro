@@ -1,0 +1,37 @@
+{
+  "name": "hostpanel-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HostPanel Pro - Professional Web Hosting Control Panel",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "turbo clean",
+    "db:generate": "cd apps/api && npm run db:generate",
+    "db:migrate": "cd apps/api && npm run db:migrate",
+    "db:seed": "cd apps/api && npm run db:seed",
+    "db:studio": "cd apps/api && npm run db:studio",
+    "docker:dev": "docker compose up -d",
+    "docker:dev:build": "docker compose up -d --build",
+    "docker:dev:down": "docker compose down",
+    "docker:prod": "docker compose -f docker-compose.prod.yml up -d",
+    "docker:prod:down": "docker compose -f docker-compose.prod.yml down"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "turbo": "^2.0.6",
+    "typescript": "^5.5.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

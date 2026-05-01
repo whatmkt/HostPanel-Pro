@@ -1,0 +1,36 @@
+[Unit]
+Description=HostPanel Pro Worker
+Documentation=https://github.com/hostpanel-pro/hostpanel-pro
+After=network.target postgresql.service redis-server.service hostpanel-api.service
+Wants=postgresql.service redis-server.service hostpanel-api.service
+
+[Service]
+Type=simple
+User=hostpanel
+Group=hostpanel
+WorkingDirectory=/opt/hostpanel/apps/worker
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/hostpanel/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hostpanel-worker
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/hostpanel /var/log/hostpanel /tmp
+ReadOnlyPaths=/etc/ssl/certs /usr/share
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=2048
+MemoryMax=1G
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

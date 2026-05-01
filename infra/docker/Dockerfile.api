@@ -1,0 +1,54 @@
+FROM node:20-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy root workspace configs
+COPY package.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+
+# Copy package-level package.json files for install
+COPY packages/config/package.json ./packages/config/
+COPY packages/types/package.json ./packages/types/
+COPY packages/validation/package.json ./packages/validation/
+COPY apps/api/package.json ./apps/api/
+COPY apps/api/nest-cli.json ./apps/api/
+
+RUN npm install --legacy-peer-deps
+
+# Copy actual source code
+COPY packages/config/src ./packages/config/src
+COPY packages/config/tsconfig.json ./packages/config/
+COPY packages/types/src ./packages/types/src
+COPY packages/types/tsconfig.json ./packages/types/
+COPY packages/validation/src ./packages/validation/src
+COPY packages/validation/tsconfig.json ./packages/validation/
+
+COPY apps/api/src ./apps/api/src
+COPY apps/api/prisma ./apps/api/prisma
+COPY apps/api/tsconfig.json ./apps/api/
+
+# Build all packages first
+RUN npx tsc -p packages/config/tsconfig.json --skipLibCheck --outDir packages/config/dist
+RUN npx tsc -p packages/types/tsconfig.json --skipLibCheck --outDir packages/types/dist
+RUN npx tsc -p packages/validation/tsconfig.json --skipLibCheck --outDir packages/validation/dist
+
+# Build API
+WORKDIR /app/apps/api
+RUN npx prisma generate
+RUN npx nest build
+
+EXPOSE 3001
+
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/main"]
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s \
+  CMD curl -f http://localhost:3001/api/v1/health || exit 1

@@ -1,0 +1,35 @@
+[Unit]
+Description=HostPanel Pro Agent
+Documentation=https://github.com/hostpanel-pro/hostpanel-pro
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/hostpanel/apps/agent
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/hostpanel/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hostpanel-agent
+
+# Security hardening (agent needs more privileges for system operations)
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/opt/hostpanel /var/log/hostpanel /etc/nginx /etc/apache2 /etc/php /etc/ssl /etc/hostpanel /tmp /var/www /var/lib/mysql /var/lib/postgresql
+ReadOnlyPaths=/etc/hosts /etc/passwd /etc/group
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryMax=512M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

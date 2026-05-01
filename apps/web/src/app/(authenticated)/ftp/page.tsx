@@ -1,0 +1,3 @@
+'use client';
+import PageShell from '@/components/PageShell';
+export default function FtpPage() { return (<PageShell title="FTP / SFTP" description="Manage FTP and SFTP accounts" icon="HardDrive"><div className="card"><div className="card-header">FTP Accounts</div><div className="card-body text-sm text-panel-500 dark:text-panel-400">FTP management will be available after connecting a server agent.</div></div></PageShell>); }

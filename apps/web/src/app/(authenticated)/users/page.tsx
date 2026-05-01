@@ -1,0 +1,3 @@
+'use client';
+import PageShell from '@/components/PageShell';
+export default function UsersPage() { return (<PageShell title="Users" description="Manage panel users and permissions" icon="UserCog"><div className="card"><div className="card-header">Users & Roles</div><div className="card-body text-sm text-panel-500 dark:text-panel-400">User management interface will appear here.</div></div></PageShell>); }

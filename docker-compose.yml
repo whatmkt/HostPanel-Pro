@@ -1,0 +1,146 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hostpanel-postgres
+    environment:
+      POSTGRES_USER: hostpanel
+      POSTGRES_PASSWORD: hostpanel_pass
+      POSTGRES_DB: hostpanel
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hostpanel"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hostpanel
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: hostpanel-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hostpanel
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: hostpanel-api
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://hostpanel:hostpanel_pass@postgres:5432/hostpanel
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev_jwt_secret_do_not_use_in_production_change_this_to_64_chars
+      - ENCRYPTION_KEY=dev_encryption_key_change_this_to_64_bytes_long_string
+      - SESSION_SECRET=dev_session_secret_change_me
+      - API_PORT=3001
+      - API_CORS_ORIGIN=http://localhost:3000
+      - AGENT_API_KEY=dev_agent_key
+      - AGENT_URL=http://mock-agent:3002
+      - LOG_LEVEL=debug
+      - FF_ENABLE_MOCK_AGENT=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./packages:/app/packages
+    networks:
+      - hostpanel
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.worker
+    container_name: hostpanel-worker
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://hostpanel:hostpanel_pass@postgres:5432/hostpanel
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev_jwt_secret_do_not_use_in_production_change_this_to_64_chars
+      - ENCRYPTION_KEY=dev_encryption_key_change_this_to_64_bytes_long_string
+      - AGENT_API_KEY=dev_agent_key
+      - AGENT_URL=http://mock-agent:3002
+      - WORKER_CONCURRENCY=5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/worker:/app/apps/worker
+      - ./packages:/app/packages
+    networks:
+      - hostpanel
+    restart: unless-stopped
+
+  mock-agent:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.mock-agent
+    container_name: hostpanel-mock-agent
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - AGENT_PORT=3002
+      - AGENT_API_KEY=dev_agent_key
+    volumes:
+      - ./apps/mock-agent:/app/apps/mock-agent
+      - ./packages:/app/packages
+    networks:
+      - hostpanel
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+    container_name: hostpanel-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
+      - NEXT_PUBLIC_WS_URL=ws://localhost:3001
+      - NEXT_PUBLIC_APP_NAME=HostPanel Pro
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./packages:/app/packages
+    depends_on:
+      - api
+    networks:
+      - hostpanel
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  hostpanel:
+    driver: bridge

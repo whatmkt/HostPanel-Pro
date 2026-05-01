@@ -1,0 +1,28 @@
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy root workspace configs
+COPY package.json ./
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+
+# Copy package-level package.json files for install
+COPY packages/config/package.json ./packages/config/
+COPY packages/types/package.json ./packages/types/
+COPY packages/validation/package.json ./packages/validation/
+COPY apps/worker/package.json ./apps/worker/
+
+RUN npm install --legacy-peer-deps
+
+# Copy actual source code
+COPY packages/config ./packages/config
+COPY packages/types ./packages/types
+COPY packages/validation ./packages/validation
+COPY apps/worker ./apps/worker
+
+WORKDIR /app/apps/worker
+
+EXPOSE 3002
+
+CMD ["npm", "run", "dev"]

@@ -1,0 +1,3 @@
+'use client';
+import PageShell from '@/components/PageShell';
+export default function SslPage() { return (<PageShell title="SSL / TLS" description="Issue, manage, and renew SSL certificates" icon="ShieldCheck"><div className="card"><div className="card-header">Certificates</div><div className="card-body text-sm text-panel-500 dark:text-panel-400">SSL management will be available after connecting a server agent.</div></div></PageShell>); }

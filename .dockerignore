@@ -1,0 +1,78 @@
+# Dependencies - DO NOT COPY HOST node_modules
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs - generated inside containers
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# Turbo cache
+.turbo/
+
+# Environment files (keep secrets out of images)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Docker data
+docker-data/
+
+# Certificates
+*.pem
+*.key
+*.crt
+*.csr
+
+# Backups
+backups/
+*.sql.gz
+*.tar.gz
+
+# Temp
+tmp/
+temp/
+*.tmp
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Package locks (use npm install inside container)
+package-lock.json
+
+# Documentation (not needed for build)
+docs/
+
+# Infrastructure files (keep Dockerfiles accessible)
+infra/nginx/
+infra/systemd/
+infra/templates/
+infra/scripts/

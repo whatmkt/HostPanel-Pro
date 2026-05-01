@@ -1,0 +1,3 @@
+'use client';
+import PageShell from '@/components/PageShell';
+export default function SecurityPage() { return (<PageShell title="Security" description="Firewall, Fail2Ban, antivirus, and malware scanner" icon="Shield"><div className="card"><div className="card-header">Security Center</div><div className="card-body text-sm text-panel-500 dark:text-panel-400">Security management will be available after connecting a server agent.</div></div></PageShell>); }
