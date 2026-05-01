@@ -503,12 +503,18 @@ finish() {
 main() {
   banner
 
+  # ── WARNING: prepare() MUST be called first to create LOG_DIR ──
+  mkdir -p "$LOG_DIR" "$BACKUP_DIR"
+  INSTALL_LOG="${LOG_DIR}/install-$(date +%Y%m%d-%H%M%S).log"
+  touch "$INSTALL_LOG" 2>/dev/null || true
+
   check_root
   check_os
   check_memory
   check_disk
   prepare
   install_system_deps
+
   install_nodejs
   create_system_user
   setup_application
